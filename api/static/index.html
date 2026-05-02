@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Basketball Shot Predictor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --court-bg: #0d1117;
+      --panel-bg: #111518;
+      --panel-border: #1f2933;
+      --surface: #161c22;
+      --surface-hover: #1c2530;
+      --text-primary: #e8edf2;
+      --text-secondary: #6b7f91;
+      --text-muted: #3d4f5f;
+      --accent-blue: #3b82f6;
+      --accent-blue-dim: rgba(59,130,246,0.12);
+      --accent-red: #ef4444;
+      --accent-red-dim: rgba(239,68,68,0.12);
+      --accent-green: #10b981;
+      --accent-amber: #f59e0b;
+      --border-radius: 6px;
+    }
+
+    html, body { height: 100%; overflow: hidden; font-family: 'Barlow Condensed', sans-serif; background: var(--court-bg); color: var(--text-primary); }
+
+    /* ── Layout ── */
+    #app { display: flex; width: 100%; height: 100vh; }
+
+    /* ── Court ── */
+    #courtPanel { flex: 1; position: relative; overflow: hidden; background: #080c10; }
+
+    #courtWrap { position: relative; width: 100%; height: 100%; }
+
+    #courtImg {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      opacity: 0.82;
+      display: block;
+    }
+
+    #courtImg.placing { cursor: crosshair; }
+    #courtImg.normal  { cursor: default; }
+
+    #dotOverlay {
+      position: absolute; top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+    }
+
+    /* ── Tooltip ── */
+    #tooltip {
+      display: none;
+      position: absolute;
+      pointer-events: none;
+      background: rgba(8,12,16,0.95);
+      border: 1px solid var(--panel-border);
+      border-radius: var(--border-radius);
+      padding: 10px 13px;
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      min-width: 185px;
+      z-index: 20;
+      backdrop-filter: blur(6px);
+    }
+    #ttSide {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 13px; font-weight: 600;
+      letter-spacing: 0.05em; text-transform: uppercase;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--panel-border);
+    }
+    .tt-row { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 3px; }
+    .tt-label { color: var(--text-muted); }
+    .tt-val   { color: var(--text-primary); }
+    .tt-dist  { color: var(--accent-amber); }
+    .tt-zone  { color: var(--accent-blue); }
+    .tt-divider { border-top: 1px solid var(--panel-border); margin: 7px 0; }
+
+    /* ── Court stats overlay ── */
+    #courtStats {
+      position: absolute; bottom: 16px; left: 16px;
+      display: flex; flex-direction: column; gap: 6px;
+      z-index: 10; pointer-events: none;
+    }
+    .stat-pill {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px; font-weight: 400;
+      padding: 4px 10px; border-radius: 20px;
+      background: rgba(8,12,16,0.75);
+      border: 1px solid var(--panel-border);
+      color: var(--text-secondary);
+      letter-spacing: 0.04em;
+    }
+
+    /* ── Placing mode banner ── */
+    #placingBanner {
+      display: none;
+      position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+      z-index: 30; pointer-events: none;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 14px; font-weight: 600; letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 7px 20px; border-radius: 4px;
+      border: 1px solid;
+    }
+    #placingBanner.shooter {
+      background: rgba(59,130,246,0.15);
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+    }
+    #placingBanner.defender {
+      background: rgba(239,68,68,0.15);
+      border-color: var(--accent-red);
+      color: var(--accent-red);
+    }
+
+    /* ── Side panel ── */
+    #sidePanel {
+      width: 280px; flex-shrink: 0;
+      background: var(--panel-bg);
+      border-left: 1px solid var(--panel-border);
+      display: flex; flex-direction: column;
+      overflow-y: auto;
+    }
+
+    /* ── Panel header ── */
+    #panelHeader {
+      padding: 20px 20px 16px;
+      border-bottom: 1px solid var(--panel-border);
+    }
+    #panelHeader h1 {
+      font-size: 20px; font-weight: 700;
+      letter-spacing: 0.05em; text-transform: uppercase;
+      color: var(--text-primary);
+    }
+    #panelHeader p {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px; color: var(--text-muted);
+      margin-top: 4px; letter-spacing: 0.03em;
+    }
+
+    /* ── Panel body ── */
+    #panelBody { padding: 16px 20px; display: flex; flex-direction: column; gap: 16px; flex: 1; }
+
+    /* ── Section label ── */
+    .section-label {
+      font-size: 10px; font-weight: 600;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    /* ── Form group ── */
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+
+    .field-label {
+      font-size: 11px; font-weight: 500;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      color: var(--text-secondary);
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    /* ── Badge ── */
+    .badge {
+      font-size: 10px; font-weight: 600;
+      padding: 2px 7px; border-radius: 3px;
+      letter-spacing: 0.05em;
+    }
+    .badge-blue   { background: var(--accent-blue-dim); color: var(--accent-blue); border: 1px solid rgba(59,130,246,0.25); }
+    .badge-amber  { background: rgba(245,158,11,0.1);   color: var(--accent-amber); border: 1px solid rgba(245,158,11,0.25); }
+
+    /* ── Select ── */
+    select {
+      width: 100%; padding: 8px 10px;
+      background: var(--surface); color: var(--text-primary);
+      border: 1px solid var(--panel-border);
+      border-radius: var(--border-radius);
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 14px; font-weight: 500;
+      outline: none; cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7f91' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      transition: border-color 0.15s;
+    }
+    select:hover { border-color: #2d3f52; }
+    select:focus { border-color: var(--accent-blue); }
+
+    /* ── Slider ── */
+    .slider-row { display: flex; align-items: center; gap: 10px; }
+    input[type=range] {
+      flex: 1; height: 4px;
+      -webkit-appearance: none; appearance: none;
+      background: var(--panel-border); border-radius: 2px; outline: none;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px; height: 14px; border-radius: 50%;
+      background: var(--accent-blue);
+      border: 2px solid var(--panel-bg);
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+    input[type=range]:hover::-webkit-slider-thumb { transform: scale(1.2); }
+    .slider-val {
+      font-family: 'DM Mono', monospace;
+      font-size: 12px; color: var(--text-primary);
+      min-width: 36px; text-align: right;
+    }
+
+    /* ── Divider ── */
+    .divider { border: none; border-top: 1px solid var(--panel-border); }
+
+    /* ── Player buttons ── */
+    .player-btns { display: flex; gap: 8px; }
+    .player-btn {
+      flex: 1; padding: 10px;
+      border-radius: var(--border-radius);
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 13px; font-weight: 600;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      border: 1px solid; cursor: pointer;
+      transition: all 0.15s;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+    }
+    #shooterBtn {
+      background: var(--accent-blue-dim);
+      border-color: rgba(59,130,246,0.3);
+      color: var(--accent-blue);
+    }
+    #shooterBtn:hover, #shooterBtn.active {
+      background: rgba(59,130,246,0.22);
+      border-color: var(--accent-blue);
+    }
+    #defenderBtn {
+      background: var(--accent-red-dim);
+      border-color: rgba(239,68,68,0.3);
+      color: var(--accent-red);
+    }
+    #defenderBtn:hover, #defenderBtn.active {
+      background: rgba(239,68,68,0.22);
+      border-color: var(--accent-red);
+    }
+
+    /* ── Dot placed status ── */
+    .dot-status {
+      display: flex; gap: 8px;
+    }
+    .dot-info {
+      flex: 1; padding: 8px 10px;
+      background: var(--surface);
+      border: 1px solid var(--panel-border);
+      border-radius: var(--border-radius);
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+    }
+    .dot-info-label {
+      font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+      margin-bottom: 3px;
+    }
+    .dot-info-label.blue { color: var(--accent-blue); }
+    .dot-info-label.red  { color: var(--accent-red); }
+    .dot-info-val { color: var(--text-primary); font-size: 13px; font-weight: 500; }
+
+    /* ── Action buttons ── */
+    .action-btns { display: flex; gap: 8px; }
+    #predictBtn {
+      flex: 1; padding: 11px;
+      background: var(--accent-blue);
+      color: #fff; border: none;
+      border-radius: var(--border-radius);
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 14px; font-weight: 700;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      cursor: pointer; transition: background 0.15s, transform 0.1s;
+    }
+    #predictBtn:hover   { background: #2563eb; }
+    #predictBtn:active  { transform: scale(0.98); }
+    #resetBtn {
+      padding: 11px 16px;
+      background: var(--surface); color: var(--text-secondary);
+      border: 1px solid var(--panel-border);
+      border-radius: var(--border-radius);
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 14px; font-weight: 600;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      cursor: pointer; transition: all 0.15s;
+    }
+    #resetBtn:hover { background: var(--surface-hover); color: var(--text-primary); }
+
+    /* ── Result box ── */
+    #resultBox {
+      display: none;
+      padding: 14px;
+      border-radius: var(--border-radius);
+      border: 1px solid var(--panel-border);
+      background: var(--surface);
+      animation: fadeIn 0.25s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+    #resultLabel {
+      font-size: 10px; font-weight: 600;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--text-muted); margin-bottom: 6px;
+    }
+    #resultVal {
+      font-size: 42px; font-weight: 700;
+      letter-spacing: -0.01em; line-height: 1;
+    }
+    #resultBar {
+      margin-top: 10px; height: 4px;
+      background: var(--panel-border); border-radius: 2px; overflow: hidden;
+    }
+    #resultBarFill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+    #resultSub {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px; color: var(--text-secondary);
+      margin-top: 8px;
+    }
+
+    /* ── Loading state ── */
+    #predictBtn.loading { opacity: 0.6; pointer-events: none; }
+  </style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ── Court Panel ── -->
+  <div id="courtPanel">
+    <div id="courtWrap">
+      <img id="courtImg"
+        src="/static/Basketball-Court-Dimensions-Cad-Design.jpg"
+        alt="basketball court"
+        class="normal"
+        onmousemove="onCourtMove(event)"
+        onmouseleave="hideTooltip()"
+        onclick="onCourtClick(event)">
+
+      <svg id="dotOverlay"
+        viewBox="0 0 1592 947"
+        preserveAspectRatio="xMidYMid meet">
+      </svg>
+
+      <!-- Tooltip -->
+      <div id="tooltip">
+        <div id="ttSide"></div>
+        <div class="tt-row"><span class="tt-label">X (horiz)</span><span id="ttX" class="tt-val">—</span></div>
+        <div class="tt-row"><span class="tt-label">Y (vert)</span><span id="ttY" class="tt-val">—</span></div>
+        <div class="tt-divider"></div>
+        <div class="tt-row"><span class="tt-label">From basket</span><span id="ttDist" class="tt-dist">—</span></div>
+        <div class="tt-row"><span class="tt-label">Zone</span><span id="ttZone" class="tt-zone">—</span></div>
+      </div>
+
+      <!-- Court stats pills -->
+      <div id="courtStats"></div>
+
+      <!-- Placing banner -->
+      <div id="placingBanner"></div>
+    </div>
+  </div>
+
+  <!-- ── Side Panel ── -->
+  <div id="sidePanel">
+    <div id="panelHeader">
+      <h1>Shot Predictor</h1>
+      <p>place shooter · place defender · predict</p>
+    </div>
+
+    <div id="panelBody">
+
+      <!-- Period -->
+      <div class="form-group">
+        <label class="field-label">
+          Period
+          <span id="periodBadge" class="badge badge-blue">Regular</span>
+        </label>
+        <select id="period" onchange="onPeriodChange()">
+          <option value="1">Period 1</option>
+          <option value="2">Period 2</option>
+          <option value="3">Period 3</option>
+          <option value="4">Period 4</option>
+          <option value="5">Overtime 1</option>
+          <option value="6">Overtime 2</option>
+          <option value="7">Overtime 3</option>
+        </select>
+      </div>
+
+      <!-- Game clock -->
+      <div class="form-group">
+        <label class="field-label">Game clock</label>
+        <div class="slider-row">
+          <input type="range" id="gameClock" min="0" max="720" value="360" step="1"
+            oninput="updateVal('gameClock','gameClockVal')">
+          <span id="gameClockVal" class="slider-val">360s</span>
+        </div>
+      </div>
+
+      <!-- Shot clock -->
+      <div class="form-group">
+        <label class="field-label">Shot clock</label>
+        <div class="slider-row">
+          <input type="range" id="shotClock" min="0" max="24" value="12" step="1"
+            oninput="updateVal('shotClock','shotClockVal')">
+          <span id="shotClockVal" class="slider-val">12s</span>
+        </div>
+      </div>
+
+      <!-- Court side -->
+      <div class="form-group">
+        <label class="field-label">Shooting side</label>
+        <select id="courtSide">
+          <option value="1">Left basket</option>
+          <option value="2">Right basket</option>
+        </select>
+      </div>
+
+      <hr class="divider">
+
+      <!-- Player buttons -->
+      <div>
+        <div class="section-label">Place on court</div>
+        <div class="player-btns">
+          <button id="shooterBtn" class="player-btn" onclick="setPlayer('shooter')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
+            Shooter
+          </button>
+          <button id="defenderBtn" class="player-btn" onclick="setPlayer('defender')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
+            Defender
+          </button>
+        </div>
+      </div>
+
+      <!-- Dot status -->
+      <div class="dot-status">
+        <div class="dot-info">
+          <div class="dot-info-label blue">Shooter dist</div>
+          <div id="shotDistDisplay" class="dot-info-val">—</div>
+        </div>
+        <div class="dot-info">
+          <div class="dot-info-label red">Defender dist</div>
+          <div id="defDistDisplay" class="dot-info-val">—</div>
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <!-- Action buttons -->
+      <div class="action-btns">
+        <button id="predictBtn" onclick="predict()">Predict shot</button>
+        <button id="resetBtn"   onclick="reset()">Reset</button>
+      </div>
+
+      <!-- Result -->
+      <div id="resultBox">
+        <div id="resultLabel">Probability of shot made</div>
+        <div id="resultVal">—</div>
+        <div id="resultBar"><div id="resultBarFill"></div></div>
+        <div id="resultSub"></div>
+      </div>
+
+    </div><!-- /panelBody -->
+  </div><!-- /sidePanel -->
+</div><!-- /app -->
+
+<script>
+  // ── Court geometry constants ──
+  const IMG_W = 1592, IMG_H = 947;
+  const CX = 55,  CY = 77;
+  const CW = 1480, CH = 796;
+
+  const PX_PER_FT_H = 478 / 23.75;   // 20.1263 px/ft  (horizontal)
+  const PX_PER_FT_V = 635 / 44;      // 14.4318 px/ft  (vertical)
+
+  const THREE_CORNER_H_FT = Math.sqrt(23.75 * 23.75 - 22 * 22);
+  const THREE_CORNER_H_PX = THREE_CORNER_H_FT * PX_PER_FT_H;
+
+  const LEFT_BASKET_X  = CX + 185 - THREE_CORNER_H_PX;
+  const RIGHT_BASKET_X = IMG_W - LEFT_BASKET_X;
+  const BASKET_Y       = CY + CH / 2;
+
+  const THREE_CORNER_V_PX    = 22 * PX_PER_FT_V;
+  const THREE_TOP_Y          = BASKET_Y - THREE_CORNER_V_PX;
+  const THREE_BOT_Y          = BASKET_Y + THREE_CORNER_V_PX;
+  const LEFT_CORNER_STRAIGHT_X  = CX + 185;
+  const RIGHT_CORNER_STRAIGHT_X = CX + CW - 185;
+  const HALF_COURT_X = CX + CW / 2;
+
+  // ── State ──
+  let placingMode    = null;   // 'shooter' | 'defender' | null
+  let shooterPos     = null;   // { refX, refY }
+  let defenderPos    = null;
+  let SHOT_DIST      = null;   // ft
+  let CLOSE_DEF_DIST = null;   // ft
+
+  // ── Zone detection ──
+  function getZone(distFt, refX, refY, isLeft) {
+    const inCornerY = refY < THREE_TOP_Y || refY > THREE_BOT_Y;
+    const inCornerX = isLeft
+      ? refX <= LEFT_CORNER_STRAIGHT_X
+      : refX >= RIGHT_CORNER_STRAIGHT_X;
+
+    if (inCornerY && inCornerX) {
+      if (distFt <= 4)  return 'Restricted area';
+      if (distFt <= 15) return 'Paint / mid-range';
+      const bx = isLeft ? LEFT_BASKET_X : RIGHT_BASKET_X;
+      const xDistFt = Math.abs(refX - bx) / PX_PER_FT_H;
+      return xDistFt >= 22 ? '3-point' : 'Mid-range';
+    }
+    if (distFt <=  4)    return 'Restricted area';
+    if (distFt <=  8)    return 'Paint (non-RA)';
+    if (distFt <= 15)    return 'Mid-range close';
+    if (distFt <= 23.75) return 'Mid-range';
+    if (distFt <= 27)    return '3-point';
+    return 'Deep 3 / half-court';
+  }
+
+  // ── Draw dots on SVG overlay ──
+  function drawDots() {
+    const svg = document.getElementById('dotOverlay');
+    svg.innerHTML = '';
+
+    if (shooterPos && defenderPos) {
+      // Dashed line between them
+      const ln = makeSVG('line', {
+        x1: shooterPos.refX, y1: shooterPos.refY,
+        x2: defenderPos.refX, y2: defenderPos.refY,
+        stroke: 'rgba(255,255,255,0.35)',
+        'stroke-width': 2,
+        'stroke-dasharray': '10 6'
+      });
+      svg.appendChild(ln);
+    }
+
+    if (shooterPos) {
+      drawDot(svg, shooterPos.refX, shooterPos.refY,
+        '#3b82f6', 'rgba(59,130,246,0.18)',
+        'S', SHOT_DIST !== null ? SHOT_DIST.toFixed(1) + ' ft' : '');
+    }
+
+    if (defenderPos) {
+      drawDot(svg, defenderPos.refX, defenderPos.refY,
+        '#ef4444', 'rgba(239,68,68,0.18)',
+        'D', CLOSE_DEF_DIST !== null ? CLOSE_DEF_DIST.toFixed(1) + ' ft' : '');
+    }
+  }
+
+  function drawDot(svg, x, y, color, ringColor, letter, distLabel) {
+    // Outer glow ring
+    svg.appendChild(makeSVG('circle', { cx: x, cy: y, r: 20, fill: ringColor, stroke: color, 'stroke-width': 1.5 }));
+    // Dot
+    svg.appendChild(makeSVG('circle', { cx: x, cy: y, r: 9, fill: color }));
+    // Letter
+    const txt = makeSVG('text', {
+      x, y: y + 1,
+      fill: '#fff', 'font-size': 11, 'font-family': 'Barlow Condensed, sans-serif',
+      'font-weight': 700, 'text-anchor': 'middle', 'dominant-baseline': 'middle'
+    });
+    txt.textContent = letter;
+    svg.appendChild(txt);
+    // Distance label
+    if (distLabel) {
+      const bg = makeSVG('rect', {
+        x: x + 14, y: y - 26, width: distLabel.length * 7.5 + 10, height: 18,
+        rx: 3, fill: 'rgba(8,12,16,0.8)', stroke: color, 'stroke-width': 1
+      });
+      svg.appendChild(bg);
+      const lbl = makeSVG('text', {
+        x: x + 19, y: y - 13,
+        fill: color, 'font-size': 11,
+        'font-family': 'DM Mono, monospace', 'font-weight': 500
+      });
+      lbl.textContent = distLabel;
+      svg.appendChild(lbl);
+    }
+  }
+
+  function makeSVG(tag, attrs) {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    return el;
+  }
+
+  // ── Placing mode ──
+  function setPlayer(type) {
+    placingMode = placingMode === type ? null : type;
+    updateUI();
+  }
+
+  function updateUI() {
+    const img = document.getElementById('courtImg');
+    const banner = document.getElementById('placingBanner');
+    const sBtn = document.getElementById('shooterBtn');
+    const dBtn = document.getElementById('defenderBtn');
+
+    if (placingMode) {
+      img.className = 'placing';
+      banner.style.display = 'block';
+      banner.className = placingMode;
+      banner.textContent = placingMode === 'shooter'
+        ? '● Click court to place shooter'
+        : '● Click court to place defender';
+    } else {
+      img.className = 'normal';
+      banner.style.display = 'none';
+    }
+
+    sBtn.classList.toggle('active', placingMode === 'shooter');
+    dBtn.classList.toggle('active', placingMode === 'defender');
+
+    // Update distance displays
+    document.getElementById('shotDistDisplay').textContent =
+      SHOT_DIST !== null ? SHOT_DIST.toFixed(1) + ' ft' : '—';
+    document.getElementById('defDistDisplay').textContent =
+      CLOSE_DEF_DIST !== null ? CLOSE_DEF_DIST.toFixed(1) + ' ft' : '—';
+  }
+
+  // ── Court click ──
+  function onCourtClick(e) {
+    if (!placingMode) return;
+
+    const img  = document.getElementById('courtImg');
+    const rect = img.getBoundingClientRect();
+    const refX = (e.clientX - rect.left) * (IMG_W / rect.width);
+    const refY = (e.clientY - rect.top)  * (IMG_H / rect.height);
+
+    if (refX < CX || refX > CX + CW || refY < CY || refY > CY + CH) return;
+
+    if (placingMode === 'shooter') {
+      shooterPos  = { refX, refY };
+      defenderPos = null;
+      CLOSE_DEF_DIST = null;
+
+      const side = parseInt(document.getElementById('courtSide').value);
+      const bx   = side === 1 ? LEFT_BASKET_X : RIGHT_BASKET_X;
+      const dxFt = (refX - bx) / PX_PER_FT_H;
+      const dyFt = (refY - BASKET_Y) / PX_PER_FT_V;
+      SHOT_DIST  = Math.sqrt(dxFt * dxFt + dyFt * dyFt);
+
+    } else if (placingMode === 'defender') {
+      if (!shooterPos) { alert('Place the shooter first.'); return; }
+      defenderPos = { refX, refY };
+
+      const dxFt     = (refX - shooterPos.refX) / PX_PER_FT_H;
+      const dyFt     = (refY - shooterPos.refY) / PX_PER_FT_V;
+      CLOSE_DEF_DIST = Math.sqrt(dxFt * dxFt + dyFt * dyFt);
+    }
+
+    placingMode = null;
+    drawDots();
+    updateUI();
+  }
+
+  // ── Hover tooltip ──
+  function onCourtMove(e) {
+    const img  = document.getElementById('courtImg');
+    const rect = img.getBoundingClientRect();
+    const elX  = e.clientX - rect.left;
+    const elY  = e.clientY - rect.top;
+    const refX = elX * (IMG_W / rect.width);
+    const refY = elY * (IMG_H / rect.height);
+
+    if (refX < CX || refX > CX + CW || refY < CY || refY > CY + CH) {
+      hideTooltip(); return;
+    }
+
+    const isLeft = refX <= HALF_COURT_X;
+    const bx     = isLeft ? LEFT_BASKET_X : RIGHT_BASKET_X;
+    const dxFt   = (refX - bx) / PX_PER_FT_H;
+    const dyFt   = (refY - BASKET_Y) / PX_PER_FT_V;
+    const distFt = Math.sqrt(dxFt * dxFt + dyFt * dyFt);
+    const xFt    = isLeft ? (refX - CX) / PX_PER_FT_H : (CX + CW - refX) / PX_PER_FT_H;
+    const yFt    = (refY - CY) / PX_PER_FT_V;
+    const zone   = getZone(distFt, refX, refY, isLeft);
+
+    const tt = document.getElementById('tooltip');
+    tt.style.display = 'block';
+    let ttL = elX + 16, ttT = elY + 16;
+    if (ttL + 200 > rect.width)  ttL = elX - 205;
+    if (ttT + 145 > rect.height) ttT = elY - 145;
+    tt.style.left = ttL + 'px';
+    tt.style.top  = ttT + 'px';
+
+    document.getElementById('ttSide').textContent = isLeft ? 'Left half' : 'Right half';
+    document.getElementById('ttX').textContent    = xFt.toFixed(1) + ' ft';
+    document.getElementById('ttY').textContent    = yFt.toFixed(1) + ' ft';
+    document.getElementById('ttDist').textContent = distFt.toFixed(1) + ' ft';
+    document.getElementById('ttZone').textContent = zone;
+  }
+
+  function hideTooltip() {
+    document.getElementById('tooltip').style.display = 'none';
+  }
+
+  // ── Predict ──
+  async function predict() {
+    if (!shooterPos) { alert('Place the shooter on the court first.'); return; }
+
+    const btn = document.getElementById('predictBtn');
+    btn.classList.add('loading');
+    btn.textContent = 'Predicting…';
+
+    const payload = {
+      PERIOD:         parseInt(document.getElementById('period').value),
+      GAME_CLOCK:     parseInt(document.getElementById('gameClock').value),
+      SHOT_CLOCK:     parseInt(document.getElementById('shotClock').value),
+      SHOT_DIST:      parseFloat(SHOT_DIST.toFixed(2)),
+      CLOSE_DEF_DIST: CLOSE_DEF_DIST !== null ? parseFloat(CLOSE_DEF_DIST.toFixed(2)) : null,
+    };
+
+    try {
+      const res  = await fetch('/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      showResult(Math.round(data.prob_made * 100));
+    } catch (err) {
+      alert('Prediction failed: ' + err.message);
+    } finally {
+      btn.classList.remove('loading');
+      btn.textContent = 'Predict shot';
+    }
+  }
+
+  function showResult(prob) {
+    const box    = document.getElementById('resultBox');
+    const val    = document.getElementById('resultVal');
+    const fill   = document.getElementById('resultBarFill');
+    const sub    = document.getElementById('resultSub');
+    const made   = prob >= 50;
+
+    box.style.display = 'block';
+    val.textContent   = prob + '%';
+    val.style.color   = made ? 'var(--accent-green)' : 'var(--accent-red)';
+    fill.style.width  = prob + '%';
+    fill.style.background = made ? 'var(--accent-green)' : 'var(--accent-red)';
+    sub.textContent   = made ? '↑ Shot likely made' : '↓ Shot likely missed';
+    sub.style.color   = made ? 'var(--accent-green)' : 'var(--accent-red)';
+  }
+
+  // ── Reset ──
+  function reset() {
+    shooterPos = defenderPos = null;
+    SHOT_DIST = CLOSE_DEF_DIST = null;
+    placingMode = null;
+
+    document.getElementById('dotOverlay').innerHTML = '';
+    document.getElementById('gameClock').value = 360;
+    document.getElementById('gameClockVal').textContent = '360s';
+    document.getElementById('shotClock').value = 12;
+    document.getElementById('shotClockVal').textContent = '12s';
+    document.getElementById('period').value = 1;
+    document.getElementById('courtSide').value = 1;
+    document.getElementById('resultBox').style.display = 'none';
+
+    onPeriodChange();
+    updateCourtStats();
+    updateUI();
+  }
+
+  // ── Sliders & period ──
+  function updateVal(sliderId, outId) {
+    document.getElementById(outId).textContent =
+      document.getElementById(sliderId).value + 's';
+    updateCourtStats();
+  }
+
+  function onPeriodChange() {
+    const p     = parseInt(document.getElementById('period').value);
+    const badge = document.getElementById('periodBadge');
+    const gc    = document.getElementById('gameClock');
+    const gcVal = document.getElementById('gameClockVal');
+    if (p > 4) {
+      badge.textContent = 'OT';
+      badge.className   = 'badge badge-amber';
+      gc.max = 300;
+      if (parseInt(gc.value) > 300) { gc.value = 300; gcVal.textContent = '300s'; }
+    } else {
+      badge.textContent = 'Regular';
+      badge.className   = 'badge badge-blue';
+      gc.max = 720;
+    }
+    updateCourtStats();
+  }
+
+  function updateCourtStats() {
+    const gc = document.getElementById('gameClock').value;
+    const sc = document.getElementById('shotClock').value;
+    const p  = document.getElementById('period').value;
+    document.getElementById('courtStats').innerHTML =
+      `<div class="stat-pill">P${p}</div>` +
+      `<div class="stat-pill">GAME ${gc}s</div>` +
+      `<div class="stat-pill">SHOT ${sc}s</div>`;
+  }
+
+  // ── Init ──
+  updateCourtStats();
+  updateUI();
+</script>
+</body>
+</html>
