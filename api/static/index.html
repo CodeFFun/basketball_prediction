@@ -252,9 +252,7 @@
     }
 
     /* ── Dot placed status ── */
-    .dot-status {
-      display: flex; gap: 8px;
-    }
+    .dot-status { display: flex; gap: 8px; }
     .dot-info {
       flex: 1; padding: 8px 10px;
       background: var(--surface);
@@ -300,31 +298,36 @@
     /* ── Result box ── */
     #resultBox {
       display: none;
-      padding: 14px;
-      border-radius: var(--border-radius);
-      border: 1px solid var(--panel-border);
-      background: var(--surface);
+      flex-direction: column;
+      gap: 8px;
       animation: fadeIn 0.25s ease;
     }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-    #resultLabel {
+
+    /* ── Model result card ── */
+    .model-result {
+      padding: 12px 14px;
+      border-radius: var(--border-radius);
+      border: 1px solid var(--panel-border);
+      background: var(--surface);
+    }
+    .model-label {
       font-size: 10px; font-weight: 600;
       letter-spacing: 0.1em; text-transform: uppercase;
-      color: var(--text-muted); margin-bottom: 6px;
+      color: var(--text-muted); margin-bottom: 4px;
     }
-    #resultVal {
-      font-size: 42px; font-weight: 700;
+    .model-prob {
+      font-size: 28px; font-weight: 700;
       letter-spacing: -0.01em; line-height: 1;
     }
-    #resultBar {
-      margin-top: 10px; height: 4px;
+    .model-bar {
+      margin-top: 8px; height: 3px;
       background: var(--panel-border); border-radius: 2px; overflow: hidden;
     }
-    #resultBarFill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
-    #resultSub {
+    .model-bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; width: 0%; }
+    .model-sub {
       font-family: 'DM Mono', monospace;
-      font-size: 11px; color: var(--text-secondary);
-      margin-top: 8px;
+      font-size: 10px; margin-top: 5px;
     }
 
     /* ── Loading state ── */
@@ -461,12 +464,37 @@
         <button id="resetBtn"   onclick="reset()">Reset</button>
       </div>
 
-      <!-- Result -->
+      <!-- Results — one card per model -->
       <div id="resultBox">
-        <div id="resultLabel">Probability of shot made</div>
-        <div id="resultVal">—</div>
-        <div id="resultBar"><div id="resultBarFill"></div></div>
-        <div id="resultSub"></div>
+
+        <div class="model-result">
+          <div class="model-label">Logistic Regression</div>
+          <div class="model-prob" id="val_logistic">—</div>
+          <div class="model-bar"><div class="model-bar-fill" id="bar_logistic"></div></div>
+          <div class="model-sub" id="sub_logistic"></div>
+        </div>
+
+        <div class="model-result">
+          <div class="model-label">Decision Tree</div>
+          <div class="model-prob" id="val_dtree">—</div>
+          <div class="model-bar"><div class="model-bar-fill" id="bar_dtree"></div></div>
+          <div class="model-sub" id="sub_dtree"></div>
+        </div>
+
+        <div class="model-result">
+          <div class="model-label">XGBoost</div>
+          <div class="model-prob" id="val_xgb">—</div>
+          <div class="model-bar"><div class="model-bar-fill" id="bar_xgb"></div></div>
+          <div class="model-sub" id="sub_xgb"></div>
+        </div>
+
+        <div class="model-result">
+          <div class="model-label">Hist Gradient Boosting</div>
+          <div class="model-prob" id="val_hbm">—</div>
+          <div class="model-bar"><div class="model-bar-fill" id="bar_hbm"></div></div>
+          <div class="model-sub" id="sub_hbm"></div>
+        </div>
+
       </div>
 
     </div><!-- /panelBody -->
@@ -479,8 +507,8 @@
   const CX = 55,  CY = 77;
   const CW = 1480, CH = 796;
 
-  const PX_PER_FT_H = 478 / 23.75;   // 20.1263 px/ft  (horizontal)
-  const PX_PER_FT_V = 635 / 44;      // 14.4318 px/ft  (vertical)
+  const PX_PER_FT_H = 478 / 23.75;
+  const PX_PER_FT_V = 635 / 44;
 
   const THREE_CORNER_H_FT = Math.sqrt(23.75 * 23.75 - 22 * 22);
   const THREE_CORNER_H_PX = THREE_CORNER_H_FT * PX_PER_FT_H;
@@ -489,19 +517,19 @@
   const RIGHT_BASKET_X = IMG_W - LEFT_BASKET_X;
   const BASKET_Y       = CY + CH / 2;
 
-  const THREE_CORNER_V_PX    = 22 * PX_PER_FT_V;
-  const THREE_TOP_Y          = BASKET_Y - THREE_CORNER_V_PX;
-  const THREE_BOT_Y          = BASKET_Y + THREE_CORNER_V_PX;
+  const THREE_CORNER_V_PX       = 22 * PX_PER_FT_V;
+  const THREE_TOP_Y             = BASKET_Y - THREE_CORNER_V_PX;
+  const THREE_BOT_Y             = BASKET_Y + THREE_CORNER_V_PX;
   const LEFT_CORNER_STRAIGHT_X  = CX + 185;
   const RIGHT_CORNER_STRAIGHT_X = CX + CW - 185;
-  const HALF_COURT_X = CX + CW / 2;
+  const HALF_COURT_X            = CX + CW / 2;
 
   // ── State ──
-  let placingMode    = null;   // 'shooter' | 'defender' | null
-  let shooterPos     = null;   // { refX, refY }
+  let placingMode    = null;
+  let shooterPos     = null;
   let defenderPos    = null;
-  let SHOT_DIST      = null;   // ft
-  let CLOSE_DEF_DIST = null;   // ft
+  let SHOT_DIST      = null;
+  let CLOSE_DEF_DIST = null;
 
   // ── Zone detection ──
   function getZone(distFt, refX, refY, isLeft) {
@@ -531,7 +559,6 @@
     svg.innerHTML = '';
 
     if (shooterPos && defenderPos) {
-      // Dashed line between them
       const ln = makeSVG('line', {
         x1: shooterPos.refX, y1: shooterPos.refY,
         x2: defenderPos.refX, y2: defenderPos.refY,
@@ -556,11 +583,8 @@
   }
 
   function drawDot(svg, x, y, color, ringColor, letter, distLabel) {
-    // Outer glow ring
     svg.appendChild(makeSVG('circle', { cx: x, cy: y, r: 20, fill: ringColor, stroke: color, 'stroke-width': 1.5 }));
-    // Dot
-    svg.appendChild(makeSVG('circle', { cx: x, cy: y, r: 9, fill: color }));
-    // Letter
+    svg.appendChild(makeSVG('circle', { cx: x, cy: y, r: 9,  fill: color }));
     const txt = makeSVG('text', {
       x, y: y + 1,
       fill: '#fff', 'font-size': 11, 'font-family': 'Barlow Condensed, sans-serif',
@@ -568,7 +592,6 @@
     });
     txt.textContent = letter;
     svg.appendChild(txt);
-    // Distance label
     if (distLabel) {
       const bg = makeSVG('rect', {
         x: x + 14, y: y - 26, width: distLabel.length * 7.5 + 10, height: 18,
@@ -598,10 +621,10 @@
   }
 
   function updateUI() {
-    const img = document.getElementById('courtImg');
+    const img    = document.getElementById('courtImg');
     const banner = document.getElementById('placingBanner');
-    const sBtn = document.getElementById('shooterBtn');
-    const dBtn = document.getElementById('defenderBtn');
+    const sBtn   = document.getElementById('shooterBtn');
+    const dBtn   = document.getElementById('defenderBtn');
 
     if (placingMode) {
       img.className = 'placing';
@@ -618,7 +641,6 @@
     sBtn.classList.toggle('active', placingMode === 'shooter');
     dBtn.classList.toggle('active', placingMode === 'defender');
 
-    // Update distance displays
     document.getElementById('shotDistDisplay').textContent =
       SHOT_DIST !== null ? SHOT_DIST.toFixed(1) + ' ft' : '—';
     document.getElementById('defDistDisplay').textContent =
@@ -637,8 +659,8 @@
     if (refX < CX || refX > CX + CW || refY < CY || refY > CY + CH) return;
 
     if (placingMode === 'shooter') {
-      shooterPos  = { refX, refY };
-      defenderPos = null;
+      shooterPos     = { refX, refY };
+      defenderPos    = null;
       CLOSE_DEF_DIST = null;
 
       const side = parseInt(document.getElementById('courtSide').value);
@@ -725,7 +747,7 @@
         body: JSON.stringify(payload)
       });
       const data = await res.json();
-      showResult(Math.round(data.prob_made * 100));
+      showResult(data);
     } catch (err) {
       alert('Prediction failed: ' + err.message);
     } finally {
@@ -734,35 +756,49 @@
     }
   }
 
-  function showResult(prob) {
-    const box    = document.getElementById('resultBox');
-    const val    = document.getElementById('resultVal');
-    const fill   = document.getElementById('resultBarFill');
-    const sub    = document.getElementById('resultSub');
-    const made   = prob >= 50;
+  // ── Show all 4 model results ──
+  function showResult(data) {
+    const box = document.getElementById('resultBox');
+    box.style.display = 'flex';
 
-    box.style.display = 'block';
-    val.textContent   = prob + '%';
-    val.style.color   = made ? 'var(--accent-green)' : 'var(--accent-red)';
-    fill.style.width  = prob + '%';
-    fill.style.background = made ? 'var(--accent-green)' : 'var(--accent-red)';
-    sub.textContent   = made ? '↑ Shot likely made' : '↓ Shot likely missed';
-    sub.style.color   = made ? 'var(--accent-green)' : 'var(--accent-red)';
+    const models = {
+      logistic: data.logistic_regression,
+      dtree:    data.decision_tree,
+      xgb:      data.xgboost,
+      hbm:      data.hist_gradient_boosting,
+    };
+
+    for (const [key, result] of Object.entries(models)) {
+      const prob = Math.round(result.prob_made * 100);
+      const made = prob >= 50;
+
+      const valEl = document.getElementById(`val_${key}`);
+      valEl.textContent  = prob + '%';
+      valEl.style.color  = made ? 'var(--accent-green)' : 'var(--accent-red)';
+
+      const fill = document.getElementById(`bar_${key}`);
+      fill.style.width      = prob + '%';
+      fill.style.background = made ? 'var(--accent-green)' : 'var(--accent-red)';
+
+      const sub = document.getElementById(`sub_${key}`);
+      sub.textContent = made ? '↑ Shot likely made' : '↓ Shot likely missed';
+      sub.style.color = made ? 'var(--accent-green)' : 'var(--accent-red)';
+    }
   }
 
   // ── Reset ──
   function reset() {
     shooterPos = defenderPos = null;
-    SHOT_DIST = CLOSE_DEF_DIST = null;
+    SHOT_DIST  = CLOSE_DEF_DIST = null;
     placingMode = null;
 
     document.getElementById('dotOverlay').innerHTML = '';
-    document.getElementById('gameClock').value = 360;
+    document.getElementById('gameClock').value      = 360;
     document.getElementById('gameClockVal').textContent = '360s';
-    document.getElementById('shotClock').value = 12;
+    document.getElementById('shotClock').value      = 12;
     document.getElementById('shotClockVal').textContent = '12s';
-    document.getElementById('period').value = 1;
-    document.getElementById('courtSide').value = 1;
+    document.getElementById('period').value         = 1;
+    document.getElementById('courtSide').value      = 1;
     document.getElementById('resultBox').style.display = 'none';
 
     onPeriodChange();
